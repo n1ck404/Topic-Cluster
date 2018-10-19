@@ -28,6 +28,7 @@ from gensim.models.ldamodel import LdaModel
 from gensim.models.lsimodel import LsiModel
 from gensim.models import TfidfModel
 from gensim.models import HdpModel
+from gensim.summarization.summarizer import summarize
 from sklearn.decomposition import PCA
 
 from nltk.corpus import stopwords
@@ -79,7 +80,7 @@ class TcModel:
         self.iterations = 100
         self.model = None
         self.stop_words = stopwords.words('english')
-        self.stop_words.extend(['be','say','-PRON-','ms','mr','year','cent'])
+        self.stop_words.extend(['be','say','-PRON-','ms','mr','year','cent','per','www','http','com'])
 
 
 
@@ -94,15 +95,17 @@ class TcModel:
     def _phrase(self,token):
         bigram = Phrases(token,min_count=5,threshold=100)
         bigram_mod = Phraser(bigram)
-        trigram = Phrases(bigram_mod[token],min_count=5,threshold=100)
-        trigram_mod = Phraser(trigram)
-        return [trigram_mod[bigram_mod[doc]] for doc in token]
+        # trigram = Phrases(bigram_mod[token],min_count=5,threshold=100)
+        # trigram_mod = Phraser(trigram)
+        # return [trigram_mod[bigram_mod[doc]] for doc in token]
+        return [bigram_mod[doc] for doc in token]
 
 
     def _lemmatization(self,token):
-        nlp = spacy.load('en', disable=['parser', 'ner'])
+        nlp = spacy.load('en', disable=['parser', 'ner'],max_length=10000000)
         return_text = []
-        allow_postags = ['NOUN', 'ADJ', 'VERB', 'ADV','PROPN']
+        #allow_postags = ['NOUN', 'ADJ', 'VERB', 'ADV','PROPN']
+        allow_postags = ['NOUN', 'ADJ', 'VERB', 'ADV']
         for i in token:
             sentence = nlp(" ".join(i))
             return_text.append([token.lemma_ for token in sentence if token.pos_ in allow_postags])
@@ -185,7 +188,7 @@ class TcModel:
             sent = ''
             content = []
             score_list = []
-            topic_term = dict(self.model.show_topic(i,topn=1000))
+            topic_term = dict(self.model.show_topic(i,topn=10000))
             topic_list = self.doc_topic[self.doc_topic.topic == i]
             max_pro = heapq.nlargest(5,topic_list['probability'])
             for pro in max_pro:
@@ -214,7 +217,7 @@ class TcModel:
     def _topic_key(self):
         output = []
         for i in range(self.num_topics):
-            output.append([i,','.join([item[0] for item in self.model.show_topic(i)])])
+            output.append([i,','.join([item[0] for item in self.model.show_topic(i,topn=30)])])
         print(output)
         return output
 
@@ -238,22 +241,25 @@ class TcModel:
 
         print('tokenizing...')
         self.token = self._tokenize_words(self.text)
-        if n_gram == True:
-            print('phrasing...')
-            self.token = self._phrase(self.token)
-        if lemmatization == True:
-            print('lemmatization...')
-            self.token = self._lemmatization(self.token)
         if stop_words == True:
             print('remove stop words...')
             self.token = self._remove_stopwords(self.token)
+
+        if n_gram == True:
+            print('phrasing...')
+            self.token = self._phrase(self.token)
+
+        if lemmatization == True:
+            print('lemmatization...')
+            self.token = self._lemmatization(self.token)
 
         self.id2word = Dictionary(self.token)
         self.corpus = [self.id2word.doc2bow(text) for text in self.token]
         if tfidf == True:
             print('calculate tfidf...')
             tfidf_model = TfidfModel(self.corpus)
-            self.corpus = [tfidf_model[i] for i in self.corpus]
+            self.corpus = tfidf_model[self.corpus]
+
         if model == 'lda':
             self.model = LdaModel(corpus=self.corpus,
                                   id2word=self.id2word,
@@ -582,6 +588,45 @@ class TcModel:
         f.write('load csv with headers from "file:///relationship.csv" as line\nmatch (from:Topic{id:line.source}),(to:Topic{id:line.target})\nmerge (from)<-[r:Similarity{probability:line.probability}]->(to)\n\n')
         f.close()
 
+    def topic_content(self):
+        """
+
+        :return: list type, has K elements, K = the number of topics
+        """
+        content = []
+        for i in range(self.num_topics):
+            content.append(' '.join(list(self.doc_topic[self.doc_topic['topic'] == i].drop_duplicates('doc_id').sort_values('probability',ascending=False)['content'])))
+        return content
+
+    def key_sentence(self):
+        content = self.topic_content()[:2]
+        key_sent = []
+        for i in content:
+            key_sent.append(summarize(i,ratio=0.01))
+
+        return key_sent
+
+    def tfidf_keywords(self,topN = 10):
+        output = []
+        content = self.topic_content()
+        token = self._tokenize_words(content)
+        token = self._lemmatization(token)
+        token = self._remove_stopwords(token)
+        corpus = [self.id2word.doc2bow(text) for text in token]
+        tfidf = TfidfModel(corpus)
+        for i in range(self.num_topics):
+            l = tfidf[corpus[i]]
+            #l = corpus[i]
+            l = sorted(l, key=lambda x: x[1], reverse=True)
+            words = []
+            for word,value in l:
+                if len(words) == topN:
+                    break
+                else:
+                    words.append(self.id2word.get(word))
+            output.append([i,','.join(words)])
+        return output
+
 def load_data(path):
     print('Loding data...')
     data = pd.read_csv(path, encoding='utf-8')
@@ -593,13 +638,13 @@ if __name__ == '__main__':
     st = time.time()
 
     #load original data
-    path = '../data/all/output/data.csv'
+    path = '../data/alldata'
 
     model_name = 'lda'
     model = TcModel()
-    model.train(path,num_topics=20,iterations=1000,model=model_name)
+    model.train(path,num_topics=20,iterations=1000,model=model_name,n_gram=False)
     model.save(path=str('./'+ model_name))
     model.score()
     rt = time.time() - st
     print("total runing time = {}s".format(rt))
-    model.vis()
+    #model.vis()
