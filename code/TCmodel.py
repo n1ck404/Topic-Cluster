@@ -42,31 +42,6 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-"""
-
-*　　　　　　　　┏┓　　　┏┓+ +
-*　　　　　　　┏┛┻━━━┛┻┓ + +
-*　　　　　　　┃　　　　　　　┃ 　
-*　　　　　　　┃　　　━　　　┃ ++ + + +
-*　　　　　　 ████━████ ┃+
-*　　　　　　　┃　　　　　　　┃ +
-*　　　　　　　┃　　　┻　　　┃
-*　　　　　　　┃　　　　　　　┃ + +
-*　　　　　　　┗━┓　　　┏━┛
-*　　　　　　　　　┃　　　┃　　　　　　　　　　　
-*　　　　　　　　　┃　　　┃ + + + +
-*　　　　　　　　　┃　　　┃　　　　Code is far away from bug with the animal protecting　　　　　　　
-*　　　　　　　　　┃　　　┃ + 　　　　神兽保佑,代码无bug　　
-*　　　　　　　　　┃　　　┃
-*　　　　　　　　　┃　　　┃　　+　　　　　　　　　
-*　　　　　　　　　┃　 　　┗━━━┓ + +
-*　　　　　　　　　┃ 　　　　　　　┣┓
-*　　　　　　　　　┃ 　　　　　　　┏┛
-*　　　　　　　　　┗┓┓┏━┳┓┏┛ + + + +
-*　　　　　　　　　　┃┫┫　┃┫┫
-*　　　　　　　　　　┗┻┛　┗┻┛+ + + +
-"""
-
 
 class TcModel:
     """
@@ -308,8 +283,10 @@ class TcModel:
         label = []
         col = []
         for i in range(self.num_topics):
-            cosine_matrix[i][i] = 0.5
-            col.append('topic {}'.format(i))
+            cosine_matrix[i][i] = 1
+            # for j in range(i,self.num_topics):
+            #     cosine_matrix[i][j] = 0
+            col.append('topic{}'.format(i))
         cosine_matrix = pd.DataFrame(cosine_matrix)
         cosine_matrix.columns = col
         cosine_matrix.index = col
